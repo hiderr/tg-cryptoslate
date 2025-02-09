@@ -1,0 +1,26 @@
+version: '3.8'
+
+services:
+  mongodb:
+    image: mongo:4.4.18
+    platform: linux/arm64
+    environment:
+      - MONGO_INITDB_ROOT_USERNAME=${MONGODB_USER}
+      - MONGO_INITDB_ROOT_PASSWORD=${MONGODB_PASSWORD}
+    volumes:
+      - mongodb_data:/data/db
+    ports:
+      - '27018:27017'
+
+  parser:
+    build: .
+    platform: linux/arm64
+    environment:
+      - NODE_ENV=production
+      - MONGODB_URI=mongodb://${MONGODB_USER}:${MONGODB_PASSWORD}@mongodb:27017/cryptoslate?authSource=admin
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+    depends_on:
+      - mongodb
+
+volumes:
+  mongodb_data:

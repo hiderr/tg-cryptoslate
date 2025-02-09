@@ -2,6 +2,7 @@ import { CronJob } from "cron";
 import mongoose from "mongoose";
 import { Parser } from "./services/Parser";
 import { ChatGPTService } from "./services/ChatGPT";
+import { TelegramPublisher } from "./services/TelegramPublisher";
 import dotenv from "dotenv";
 import { SourceArticle } from "./models/SourceArticle";
 import { SummarizedArticle } from "./models/SummarizedArticle";
@@ -79,14 +80,18 @@ async function main() {
     await mongoose.connect(mongoUri);
     console.log(`Connected to MongoDB at ${host}`);
 
-    // Немедленный запуск
+    // Запускаем парсер и телеграм паблишер
+    const telegramPublisher = new TelegramPublisher();
+    await telegramPublisher.start();
+
+    // Немедленный запуск парсера
     await processNewArticles();
 
     // Настройка крона для последующих запусков
-    const job = new CronJob("*/30 * * * *", processNewArticles);
-    job.start();
+    const parserJob = new CronJob("*/30 * * * *", processNewArticles);
+    parserJob.start();
 
-    console.log("CryptoSlate parser started");
+    console.log("CryptoSlate parser and Telegram publisher started");
   } catch (error) {
     console.error("Error starting application:", error);
     process.exit(1);

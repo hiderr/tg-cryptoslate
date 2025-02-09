@@ -1,10 +1,11 @@
-import { CronJob } from 'cron';
-import mongoose from 'mongoose';
-import { Parser } from './services/Parser';
-import { ChatGPTService } from './services/ChatGPT';
-import dotenv from 'dotenv';
-import { SourceArticle } from './models/SourceArticle';
-import { SummarizedArticle } from './models/SummarizedArticle';
+import { CronJob } from "cron";
+import mongoose from "mongoose";
+import { Parser } from "./services/Parser";
+import { ChatGPTService } from "./services/ChatGPT";
+import dotenv from "dotenv";
+import { SourceArticle } from "./models/SourceArticle";
+import { SummarizedArticle } from "./models/SummarizedArticle";
+import { TranslatedArticle } from "./models/TranslatedArticle";
 
 dotenv.config();
 
@@ -29,23 +30,35 @@ async function processNewArticles() {
         });
         console.log(`✅ Статья спаршена: ${title}`);
 
+        // Переводим статью
+        const translatedContent = await chatGPT.translateContent(content);
+
+        // Сохраняем переведенную версию
+        await TranslatedArticle.create({
+          sourceArticleId: sourceArticle._id,
+          title: title, // Здесь можно также перевести заголовок при необходимости
+          content: translatedContent,
+          language: "ru",
+        });
+        console.log(`✅ Статья переведена: ${title}`);
+
         // Генерируем и сохраняем краткое содержание
-        const summary = await chatGPT.summarizeForTelegram(content);
+        const summary = await chatGPT.summarizeForTelegram(translatedContent);
 
         await SummarizedArticle.create({
           sourceArticleId: sourceArticle._id,
           title: title,
           content: summary,
-          language: 'ru',
-          status: 'pending',
+          language: "ru",
+          status: "pending",
         });
-        console.log(`✅ Статья переведена и сокращена: ${title}`);
+        console.log(`✅ Статья сокращена: ${title}`);
       } catch (error) {
         console.error(`❌ Ошибка обработки статьи ${url}:`, error);
       }
     }
   } catch (error) {
-    console.error('Ошибка в processNewArticles:', error);
+    console.error("Ошибка в processNewArticles:", error);
   }
 }
 
@@ -59,7 +72,7 @@ async function main() {
   } = process.env;
 
   // Определяем хост в зависимости от окружения
-  const host = NODE_ENV === 'production' ? 'mongodb' : 'localhost';
+  const host = NODE_ENV === "production" ? "mongodb" : "localhost";
   const mongoUri = `mongodb://${MONGODB_USER}:${MONGODB_PASSWORD}@${host}:${MONGODB_PORT}/${MONGODB_DATABASE}?authSource=admin`;
 
   try {
@@ -70,12 +83,12 @@ async function main() {
     await processNewArticles();
 
     // Настройка крона для последующих запусков
-    const job = new CronJob('*/30 * * * *', processNewArticles);
+    const job = new CronJob("*/30 * * * *", processNewArticles);
     job.start();
 
-    console.log('CryptoSlate parser started');
+    console.log("CryptoSlate parser started");
   } catch (error) {
-    console.error('Error starting application:', error);
+    console.error("Error starting application:", error);
     process.exit(1);
   }
 }

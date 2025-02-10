@@ -11,14 +11,16 @@ import * as path from "path";
 import * as cheerio from "cheerio";
 import { v4 as uuidv4 } from "uuid";
 import mongoose from "mongoose";
+import { Parser } from "../services/Parser";
+import { ChatGPTService } from "../services/ChatGPTService";
+import { SourceArticle } from "../models/SourceArticle";
+import { TranslatedArticle } from "../models/TranslatedArticle";
 
 dotenv.config();
 
 export class TelegramPublisher {
   private bot: Telegraf;
   private channelId: string;
-  private postsPerDay: number;
-  private publishingHours: number[];
   private tempDir: string;
 
   constructor() {
@@ -32,33 +34,18 @@ export class TelegramPublisher {
 
     this.bot = new Telegraf(process.env.TELEGRAM_BOT_TOKEN);
     this.channelId = process.env.TELEGRAM_CHANNEL_ID;
-    this.postsPerDay = Number(process.env.POSTS_PER_DAY) || 6;
-    this.publishingHours = this.calculatePublishingHours();
     this.tempDir = path.join(__dirname, "../../temp");
 
-    // Создаем временную директорию, если её нет
     if (!fs.existsSync(this.tempDir)) {
       fs.mkdirSync(this.tempDir, { recursive: true });
     }
 
-    // Добавляем обработчики ошибок
     this.bot.catch((err) => {
       console.error("❌ Ошибка в боте:", err);
     });
 
     process.once("SIGINT", () => this.stop());
     process.once("SIGTERM", () => this.stop());
-  }
-
-  private calculatePublishingHours(): number[] {
-    // Распределяем посты равномерно в промежутке с 9:00 до 21:00
-    const startHour = 9;
-    const endHour = 21;
-    const interval = (endHour - startHour) / (this.postsPerDay - 1);
-
-    return Array.from({ length: this.postsPerDay }, (_, i) => {
-      return Math.round(startHour + i * interval);
-    });
   }
 
   private async downloadImage(url: string): Promise<string> {
@@ -80,11 +67,10 @@ export class TelegramPublisher {
 
   private async processContent(content: string): Promise<{
     text: string;
-    images: string[];
+    originalImageSrc?: string;
   }> {
     const $ = cheerio.load(content);
-    const images: string[] = [];
-    const imagePromises: Promise<void>[] = [];
+    let originalImageSrc: string | undefined;
 
     // Удаляем ненужные теги
     $("html, head, body").contents().unwrap();
@@ -97,36 +83,47 @@ export class TelegramPublisher {
       }
     });
 
-    // Обрабатываем все изображения
-    $("img").each((_, el) => {
-      const src = $(el).attr("src");
-      if (src) {
-        const promise = this.downloadImage(src).then((localPath) => {
-          images.push(localPath);
-          $(el).remove();
-        });
-        imagePromises.push(promise);
-      }
-    });
+    // Сохраняем src первого изображения
+    const firstImg = $("img").first();
+    if (firstImg.length) {
+      originalImageSrc = firstImg.attr("src");
+    }
 
-    await Promise.all(imagePromises);
+    // Удаляем все изображения из текста
+    $("img").remove();
 
-    // Форматируем заголовки
+    // Форматируем заголовки в <b>
     $("h1, h2, h3, h4, h5, h6").each((_, el) => {
-      $(el).replaceWith(`\n<b>${$(el).text().trim()}</b>\n`);
+      const text = $(el).text().trim();
+      $(el).replaceWith(`<b>${text}</b>\n`);
     });
 
-    // Форматируем параграфы
+    // Остальное форматирование...
     $("p").each((_, el) => {
-      $(el).replaceWith(`${$(el).text().trim()}\n`);
+      const text = $(el).text().trim();
+      $(el).replaceWith(`${text}\n`);
     });
 
-    // Получаем текст и очищаем от лишних переносов
-    let text = $.text()
-      .replace(/\n{3,}/g, "\n\n") // Заменяем 3 и более переносов на 2
+    $("strong, b").each((_, el) => {
+      const text = $(el).text().trim();
+      $(el).replaceWith(`<b>${text}</b>`);
+    });
+
+    $("i, em").each((_, el) => {
+      const text = $(el).text().trim();
+      $(el).replaceWith(`<i>${text}</i>`);
+    });
+
+    let text = $.html()
+      .replace(/\n{3,}/g, "\n\n")
       .trim();
 
-    return { text, images };
+    text = text.replace(
+      /<(?!\/?(b|strong|i|em|a|code|pre|s|strike|u|ins|del|tg-spoiler)\b)[^>]+>/gi,
+      ""
+    );
+
+    return { text, originalImageSrc };
   }
 
   private async cleanupImages(images: string[]): Promise<void> {
@@ -140,28 +137,21 @@ export class TelegramPublisher {
   }
 
   private async publishPost(article: ISummarizedArticle): Promise<void> {
-    let downloadedImages: string[] = [];
     try {
       console.log("Начало публикации поста...");
 
-      // Обрабатываем контент и скачиваем изображения
-      console.log("Обработка контента...");
-      const { text, images } = await this.processContent(article.content);
-      downloadedImages = images;
-      console.log(`Найдено изображений: ${images.length}`);
+      const { text, originalImageSrc } = await this.processContent(
+        article.content
+      );
 
-      if (images.length > 0) {
-        // Используем sendPhoto с правильной типизацией
-        await this.bot.telegram.sendPhoto(
-          this.channelId,
-          { source: fs.createReadStream(images[0]) },
-          {
-            caption: text,
-            parse_mode: "HTML",
-          }
-        );
+      if (originalImageSrc) {
+        const imageLink = `<a href="${originalImageSrc}">&#8205;</a>`;
+        const messageText = imageLink + text;
+
+        await this.bot.telegram.sendMessage(this.channelId, messageText, {
+          parse_mode: "HTML",
+        });
       } else {
-        // Если изображений нет, отправляем только текст
         await this.bot.telegram.sendMessage(this.channelId, text, {
           parse_mode: "HTML",
         });
@@ -171,87 +161,14 @@ export class TelegramPublisher {
     } catch (error) {
       console.error("❌ Ошибка при публикации поста:", error);
       throw error;
-    } finally {
-      if (downloadedImages.length > 0) {
-        console.log("Очистка временных файлов...");
-        await this.cleanupImages(downloadedImages);
-      }
-    }
-  }
-
-  async schedulePosts(): Promise<void> {
-    try {
-      // Получаем все неопубликованные статьи
-      const pendingArticles = await SummarizedArticle.find({
-        status: "pending",
-      }).sort({ createdAt: 1 });
-
-      if (pendingArticles.length === 0) {
-        console.log("Нет статей для планирования публикации");
-        return;
-      }
-
-      console.log(`Найдено ${pendingArticles.length} статей для публикации`);
-
-      // Получаем текущее время
-      const now = new Date();
-      let currentDate = new Date(now);
-      let articleIndex = 0;
-
-      // Планируем публикации на ближайшие дни
-      while (articleIndex < pendingArticles.length) {
-        for (const hour of this.publishingHours) {
-          if (articleIndex >= pendingArticles.length) break;
-
-          const publishDate = new Date(currentDate);
-          publishDate.setHours(hour, 0, 0, 0);
-
-          // Пропускаем время, которое уже прошло
-          if (publishDate <= now) continue;
-
-          const article = pendingArticles[articleIndex];
-          const timeoutMs = publishDate.getTime() - now.getTime();
-
-          // Планируем публикацию
-          setTimeout(() => {
-            this.publishPost(article).catch(console.error);
-          }, timeoutMs);
-
-          console.log(
-            `Запланирована публикация статьи ${article._id} на ${publishDate}`
-          );
-          articleIndex++;
-        }
-        // Переходим к следующему дню
-        currentDate.setDate(currentDate.getDate() + 1);
-      }
-    } catch (error) {
-      console.error("Ошибка при планировании постов:", error);
-      throw error;
     }
   }
 
   async start(): Promise<void> {
     try {
-      console.log("Запуск бота...");
-
-      // Проверяем подключение к Telegram API
-      try {
-        const botInfo = await this.bot.telegram.getMe();
-        console.log(`Бот @${botInfo.username} подключен к Telegram API`);
-      } catch (error) {
-        console.error("❌ Ошибка подключения к Telegram API:", error);
-        if (error instanceof Error) {
-          throw new Error(`Проверьте токен бота: ${error.message}`);
-        }
-        throw new Error("Проверьте токен бота");
-      }
-
-      // Запускаем бота
       this.bot.launch();
       console.log("✅ Telegram бот успешно запущен");
 
-      // Проверяем доступ к каналу
       try {
         await this.bot.telegram.sendChatAction(this.channelId, "typing");
         console.log("✅ Доступ к каналу подтвержден");
@@ -263,14 +180,105 @@ export class TelegramPublisher {
         throw new Error("Проверьте права бота и ID канала");
       }
 
-      // Планируем посты каждый час
-      const job = new CronJob("0 * * * *", () => {
-        this.schedulePosts().catch(console.error);
-      });
-      job.start();
+      // Создаем функцию для проверки и обработки статей
+      const checkAndProcessArticles = async () => {
+        try {
+          console.log("\n🔄 Начало проверки");
 
-      // Первый запуск планирования
-      await this.schedulePosts();
+          // Сначала проверяем есть ли неопубликованные статьи
+          console.log("👀 Проверка наличия неопубликованных статей...");
+          const pendingArticle = await SummarizedArticle.findOne({
+            status: "pending",
+          }).sort({ createdAt: 1 });
+
+          if (pendingArticle) {
+            console.log("📝 Найдена неопубликованная статья, публикуем...");
+            await this.publishPost(pendingArticle);
+            await SummarizedArticle.findByIdAndUpdate(pendingArticle._id, {
+              status: "published",
+            });
+            console.log(`✅ Опубликована статья: ${pendingArticle._id}`);
+            return;
+          }
+
+          console.log("🔍 Поиск новых статей...");
+          const parser = new Parser();
+          const chatGPT = new ChatGPTService();
+
+          const newUrls = await parser.getNewArticles();
+          console.log(`📊 Найдено ${newUrls.length} новых статей`);
+
+          for (const url of newUrls) {
+            try {
+              console.log(`\n🌐 Обработка статьи: ${url}`);
+
+              console.log("1️⃣ Парсинг статьи...");
+              const { title, content } = await parser.parseArticle(url);
+
+              console.log("2️⃣ Сохранение исходной статьи...");
+              const sourceArticle = await SourceArticle.create({
+                url,
+                title,
+                content,
+                publishedAt: new Date(),
+              });
+              console.log(`✅ Исходная статья сохранена: ${sourceArticle._id}`);
+
+              console.log("3️⃣ Перевод статьи...");
+              const translatedContent = await chatGPT.translateContent(content);
+              const translatedArticle = await TranslatedArticle.create({
+                sourceArticleId: sourceArticle._id,
+                title: title,
+                content: translatedContent,
+                language: "ru",
+              });
+              console.log(`✅ Перевод сохранен: ${translatedArticle._id}`);
+
+              console.log("4️⃣ Генерация краткого содержания...");
+              const summary = await chatGPT.summarizeForTelegram(
+                translatedContent
+              );
+              const summarizedArticle = await SummarizedArticle.create({
+                sourceArticleId: sourceArticle._id,
+                content: summary,
+                status: "pending",
+              });
+              console.log(
+                `✅ Краткое содержание сохранено: ${summarizedArticle._id}`
+              );
+
+              console.log("5️⃣ Публикация в Telegram...");
+              await this.publishPost(summarizedArticle);
+              await SummarizedArticle.findByIdAndUpdate(summarizedArticle._id, {
+                status: "published",
+              });
+              console.log(
+                `🎉 Статья успешно обработана и опубликована: ${title}`
+              );
+            } catch (error) {
+              console.error(`❌ Ошибка обработки статьи ${url}:`, error);
+              console.log(
+                "⏭️ Пропускаем статью, будет обработана в следующий раз"
+              );
+            }
+          }
+
+          console.log("\n✅ Проверка завершена");
+        } catch (error) {
+          console.error("❌ Ошибка в процессе обработки:", error);
+        }
+      };
+
+      // Запускаем первую проверку сразу
+      console.log("🚀 Запуск первичной проверки...");
+      await checkAndProcessArticles();
+
+      // Настраиваем периодический запуск каждые 5 минут
+      const job = new CronJob("*/5 * * * *", checkAndProcessArticles);
+      job.start();
+      console.log(
+        "⏰ Планировщик задач запущен (следующая проверка через 5 минут)"
+      );
     } catch (error) {
       console.error("❌ Критическая ошибка при запуске бота:", error);
       throw error;
@@ -314,6 +322,32 @@ export class TelegramPublisher {
       console.log("✅ Статья успешно опубликована");
     } catch (error) {
       console.error("❌ Ошибка при публикации статьи:", error);
+      throw error;
+    }
+  }
+
+  async publishAllPending(): Promise<void> {
+    try {
+      const pendingArticles = await SummarizedArticle.find({
+        status: "pending",
+      }).sort({ createdAt: 1 });
+
+      if (pendingArticles.length === 0) {
+        console.log("Нет статей для публикации");
+        return;
+      }
+
+      console.log(`Найдено ${pendingArticles.length} статей для публикации`);
+
+      for (const article of pendingArticles) {
+        await this.publishPost(article);
+        await SummarizedArticle.findByIdAndUpdate(article._id, {
+          status: "published",
+        });
+        console.log(`✅ Опубликована статья: ${article._id}`);
+      }
+    } catch (error) {
+      console.error("❌ Ошибка при публикации статей:", error);
       throw error;
     }
   }

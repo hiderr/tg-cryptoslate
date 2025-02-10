@@ -12,7 +12,8 @@
     "docker:up": "docker-compose up -d",
     "docker:down": "docker-compose down",
     "docker:logs": "docker-compose logs -f",
-    "test:post": "ts-node scripts/testPost.ts"
+    "test:post": "ts-node scripts/testPost.ts",
+    "publish:all": "ts-node scripts/publishAll.ts"
   },
   "dependencies": {
     "axios": "^1.6.7",

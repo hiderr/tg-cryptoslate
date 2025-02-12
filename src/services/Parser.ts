@@ -1,20 +1,22 @@
-import axios from 'axios';
-import * as cheerio from 'cheerio';
-import { SourceArticle } from '../models/SourceArticle';
+import axios from "axios";
+import * as cheerio from "cheerio";
+import { SourceArticle } from "../models/SourceArticle";
 
 export class Parser {
   async getNewArticles(): Promise<string[]> {
-    const response = await axios.get('https://cryptoslate.com/news/');
+    const response = await axios.get("https://cryptoslate.com/news/");
     const $ = cheerio.load(response.data);
     const links: string[] = [];
 
-    $('.news-feed .list-feed.slate a').each((_, el) => {
-      const href = $(el).attr('href');
-      if (href) links.push(href);
+    $(".news-feed .list-feed.slate a").each((_, el) => {
+      if ($(el).find(".alpha").length === 0) {
+        const href = $(el).attr("href");
+        if (href) links.push(href);
+      }
     });
 
     const existingUrls = new Set(
-      (await SourceArticle.find().select('url')).map((a) => a.url),
+      (await SourceArticle.find().select("url")).map((a) => a.url)
     );
 
     return links.filter((url) => !existingUrls.has(url));
@@ -28,35 +30,35 @@ export class Parser {
     const html = response.data;
     const $ = cheerio.load(html);
 
-    const articleTitleText = $('h1').text().trim();
-    const articleTitle = $('<h1>').text(articleTitleText);
+    const articleTitleText = $("h1").text().trim();
+    const articleTitle = $("<h1>").text(articleTitleText);
 
-    const article = $('article.full-article');
+    const article = $(".post article").first();
 
     if (!article.length) {
-      throw new Error('Article not found');
+      throw new Error("Article not found");
     }
 
-    const headingImageDiv = $('.post-container div.cover');
-    const headingImage = headingImageDiv.find('img').first();
+    const headingImageDiv = $(".post-container div.cover");
+    const headingImage = headingImageDiv.find("img").first();
     if (headingImage.length) {
-      const newImg = $('<img>')
-        .attr('src', headingImage.attr('data-src'))
-        .attr('alt', headingImage.attr('alt'));
+      const newImg = $("<img>")
+        .attr("src", headingImage.attr("data-src"))
+        .attr("alt", headingImage.attr("alt"));
       article.prepend(newImg);
     }
 
-    const metaDescription = $('meta[name="description"]').attr('content');
+    const metaDescription = $('meta[name="description"]').attr("content");
     if (metaDescription) {
-      const descriptionParagraph = $('<p>')
-        .addClass('description')
+      const descriptionParagraph = $("<p>")
+        .addClass("description")
         .text(metaDescription);
       article.prepend(descriptionParagraph);
     }
 
     // Находим заголовок "Mentioned in this article"
     const mentionedHeader = article.find(
-      'h6:contains("Mentioned in this article")',
+      'h6:contains("Mentioned in this article")'
     );
 
     // Удаляем все содержимое после этого заголовка
@@ -67,24 +69,24 @@ export class Parser {
 
     article.prepend(articleTitle);
 
-    article.find('a').each((i, el) => {
+    article.find("a").each((i, el) => {
       $(el).replaceWith($(el).text());
     });
 
     // Удаляем рекламные блоки
-    article.find('.hypelab-container').remove();
-    article.find('.code-block').remove();
+    article.find(".hypelab-container").remove();
+    article.find(".code-block").remove();
 
     const seenTexts = new Set<string>();
     const content = article
-      .find('p, img, h1, h2, h3, h4, h5, h6, blockquote')
+      .find("p, img, h1, h2, h3, h4, h5, h6, blockquote")
       .map((i, el) => {
         const $el = $(el);
         const text = $el.text().trim();
 
         // Для изображений используем src как уникальный идентификатор
-        if (el.tagName === 'img') {
-          const src = $el.attr('src') || '';
+        if (el.tagName === "img") {
+          const src = $el.attr("src") || "";
           if (seenTexts.has(src)) {
             return null;
           }
@@ -102,10 +104,10 @@ export class Parser {
       })
       .get()
       .filter(Boolean)
-      .join('');
+      .join("");
 
     if (!content) {
-      throw new Error('Content not found');
+      throw new Error("Content not found");
     }
 
     return { title: articleTitleText, content };

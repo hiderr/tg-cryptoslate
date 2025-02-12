@@ -10,7 +10,7 @@ async function main() {
     MONGODB_PASSWORD,
     MONGODB_PORT,
     MONGODB_DATABASE,
-    NODE_ENV,
+    MONGODB_HOST,
   } = process.env;
 
   // Проверяем наличие всех необходимых переменных
@@ -18,14 +18,10 @@ async function main() {
     throw new Error("Не все переменные окружения для MongoDB установлены");
   }
 
-  // Определяем параметры подключения в зависимости от окружения
-  const host = NODE_ENV === "production" ? "mongodb" : "localhost";
-  const port = NODE_ENV === "production" ? "27017" : MONGODB_PORT || "27018";
-
   // Формируем URI для подключения
-  const mongoUri = `mongodb://${MONGODB_USER}:${MONGODB_PASSWORD}@${host}:${port}/${MONGODB_DATABASE}?authSource=admin`;
+  const mongoUri = `mongodb://${MONGODB_USER}:${MONGODB_PASSWORD}@${MONGODB_HOST}:${MONGODB_PORT}/${MONGODB_DATABASE}?authSource=admin`;
 
-  console.log(`🔄 Подключение к MongoDB на хосте: ${host}`);
+  console.log(`🔄 Подключение к MongoDB на хосте: ${MONGODB_HOST}`);
 
   try {
     console.log("📡 Попытка подключения к MongoDB...");

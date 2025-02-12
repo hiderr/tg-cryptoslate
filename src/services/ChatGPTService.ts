@@ -133,7 +133,7 @@ export class ChatGPTService {
     // Удаляем обертку ```html и ```
     const cleanedContent = translatedContent
       .replace(/^```html\n/, "")
-      .replace(/\n```$/, "");
+      .replace(/\n```/, "");
 
     return cleanedContent;
   }

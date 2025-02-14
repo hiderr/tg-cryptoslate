@@ -1,0 +1,48 @@
+name: CI/CD Deploy
+
+on:
+  push:
+    branches: [main]
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v3
+
+      - name: Configure Docker for insecure registry
+        run: |
+          echo '{"insecure-registries": ["89.250.67.180:5000"]}' | sudo tee /etc/docker/daemon.json
+          sudo systemctl restart docker
+
+      - name: Log in to Docker registry
+        uses: docker/login-action@v2
+        with:
+          registry: 89.250.67.180:5000
+          username: ${{ secrets.DOCKER_REGISTRY_USERNAME }}
+          password: ${{ secrets.DOCKER_REGISTRY_PASSWORD }}
+
+      - name: Build and push Docker image
+        uses: docker/build-push-action@v4
+        with:
+          context: .
+          file: Dockerfile
+          platforms: linux/amd64
+          push: true
+          tags: 89.250.67.180:5000/cryptoslate-parser:latest
+
+      - name: Deploy to remote server via SSH
+        uses: appleboy/ssh-action@v0.1.8
+        with:
+          host: ${{ secrets.SERVER_HOST }}
+          username: ${{ secrets.SERVER_USER }}
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          port: ${{ secrets.SERVER_SSH_PORT }}
+          script: |
+            docker pull localhost:5000/cryptoslate-parser:latest
+
+            cd /root/work/tg-channels/cryptoslate
+            docker-compose down
+            docker-compose up -d

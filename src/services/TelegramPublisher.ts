@@ -9,8 +9,6 @@ import axios from "axios";
 import * as fs from "fs";
 import * as path from "path";
 import * as cheerio from "cheerio";
-import { v4 as uuidv4 } from "uuid";
-import mongoose from "mongoose";
 import { Parser } from "../services/Parser";
 import { ChatGPTService } from "../services/ChatGPTService";
 import { SourceArticle } from "../models/SourceArticle";
@@ -48,20 +46,40 @@ export class TelegramPublisher {
     process.once("SIGTERM", () => this.stop());
   }
 
-  private async downloadImage(url: string): Promise<string> {
-    console.log(`Скачивание изображения: ${url}`);
+  private async uploadToImgBB(imageUrl: string): Promise<string> {
     try {
-      const response = await axios.get(url, { responseType: "arraybuffer" });
-      const extension = path.extname(url) || ".jpg";
-      const fileName = `${uuidv4()}${extension}`;
-      const filePath = path.join(this.tempDir, fileName);
+      console.log("📤 Загрузка изображения в ImgBB...");
 
-      await fs.promises.writeFile(filePath, response.data);
-      console.log(`✅ Изображение сохранено: ${filePath}`);
-      return filePath;
+      // Скачиваем изображение
+      const imageResponse = await axios.get(imageUrl, {
+        responseType: "arraybuffer",
+        headers: {
+          "User-Agent":
+            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36",
+        },
+      });
+
+      // Конвертируем в base64
+      const base64Image = Buffer.from(imageResponse.data).toString("base64");
+
+      // Загружаем в ImgBB
+      const formData = new FormData();
+      formData.append("image", base64Image);
+
+      const response = await axios.post(
+        `https://api.imgbb.com/1/upload?key=${process.env.IMGBB_API_KEY}`,
+        formData
+      );
+
+      if (response.data?.data?.url) {
+        console.log("✅ Изображение успешно загружено в ImgBB");
+        return response.data.data.url;
+      }
+
+      throw new Error("Не удалось получить URL загруженного изображения");
     } catch (error) {
-      console.error(`❌ Ошибка при скачивании изображения ${url}:`, error);
-      throw error;
+      console.error("❌ Ошибка при загрузке изображения в ImgBB:", error);
+      return imageUrl;
     }
   }
 
@@ -126,16 +144,6 @@ export class TelegramPublisher {
     return { text, originalImageSrc };
   }
 
-  private async cleanupImages(images: string[]): Promise<void> {
-    for (const image of images) {
-      try {
-        await fs.promises.unlink(image);
-      } catch (error) {
-        console.error(`Ошибка при удалении файла ${image}:`, error);
-      }
-    }
-  }
-
   private async publishPost(article: ISummarizedArticle): Promise<void> {
     try {
       console.log("Начало публикации поста...");
@@ -145,12 +153,16 @@ export class TelegramPublisher {
       );
 
       if (originalImageSrc) {
-        const imageLink = `<a href="${originalImageSrc}">&#8205;</a>`;
-        const messageText = imageLink + text;
+        const newSrc = await this.uploadToImgBB(originalImageSrc);
 
-        await this.bot.telegram.sendMessage(this.channelId, messageText, {
-          parse_mode: "HTML",
-        });
+        if (newSrc) {
+          const imageLink = `<a href="${newSrc}">&#8205;</a>`;
+          const messageText = imageLink + text;
+
+          await this.bot.telegram.sendMessage(this.channelId, messageText, {
+            parse_mode: "HTML",
+          });
+        }
       } else {
         await this.bot.telegram.sendMessage(this.channelId, text, {
           parse_mode: "HTML",

@@ -94,13 +94,6 @@ export class TelegramPublisher {
     $("html, head, body").contents().unwrap();
     $("div").contents().unwrap();
 
-    // Удаляем все атрибуты кроме src у img
-    $("*").each((_, el) => {
-      if (el.type === "tag" && el.tagName !== "img") {
-        $(el).removeAttr("class").removeAttr("id").removeAttr("style");
-      }
-    });
-
     // Сохраняем src первого изображения
     const firstImg = $("img").first();
     if (firstImg.length) {
@@ -122,7 +115,7 @@ export class TelegramPublisher {
       $(el).replaceWith(`${text}\n`);
     });
 
-    $("strong, b").each((_, el) => {
+    $("strong").each((_, el) => {
       const text = $(el).text().trim();
       $(el).replaceWith(`<b>${text}</b>`);
     });
@@ -132,9 +125,7 @@ export class TelegramPublisher {
       $(el).replaceWith(`<i>${text}</i>`);
     });
 
-    let text = $.html()
-      .replace(/\n{3,}/g, "\n\n")
-      .trim();
+    let text = $.html().trim();
 
     text = text.replace(
       /<(?!\/?(b|strong|i|em|a|code|pre|s|strike|u|ins|del|tg-spoiler)\b)[^>]+>/gi,

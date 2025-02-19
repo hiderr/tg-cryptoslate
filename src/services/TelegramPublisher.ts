@@ -131,6 +131,7 @@ export class TelegramPublisher {
       /<(?!\/?(b|strong|i|em|a|code|pre|s|strike|u|ins|del|tg-spoiler)\b)[^>]+>/gi,
       ""
     );
+    text = text.replace(/\n{3,}/g, "\n\n");
 
     return { text, originalImageSrc };
   }
@@ -148,7 +149,7 @@ export class TelegramPublisher {
 
         if (newSrc) {
           const imageLink = `<a href="${newSrc}">&#8205;</a>`;
-          const messageText = imageLink + text;
+          const messageText = imageLink + text.trim();
 
           await this.bot.telegram.sendMessage(this.channelId, messageText, {
             parse_mode: "HTML",

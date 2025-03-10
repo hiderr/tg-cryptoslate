@@ -137,7 +137,7 @@ export class TelegramPublisher {
   }
 
   private async publishPost(article: ISummarizedArticle): Promise<void> {
-    const subscriptionLink = `\n\n<a href="https://t.me/CryptoMindsetX">Криптомышление | Новости мира крипты"</a>`;
+    const subscriptionLink = `\n\n<a href="https://t.me/CryptoMindsetX">Криптомышление | Главные новости крипты</a>`;
 
     try {
       console.log("Начало публикации поста...");

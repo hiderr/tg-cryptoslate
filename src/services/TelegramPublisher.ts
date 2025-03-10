@@ -137,6 +137,8 @@ export class TelegramPublisher {
   }
 
   private async publishPost(article: ISummarizedArticle): Promise<void> {
+    const subscriptionLink = `\n\n<a href="https://t.me/CryptoMindsetX">Криптомышление | Новости мира крипты"</a>`;
+
     try {
       console.log("Начало публикации поста...");
 
@@ -149,16 +151,20 @@ export class TelegramPublisher {
 
         if (newSrc) {
           const imageLink = `<a href="${newSrc}">&#8205;</a>`;
-          const messageText = imageLink + text.trim();
+          const messageText = imageLink + text.trim() + subscriptionLink;
 
           await this.bot.telegram.sendMessage(this.channelId, messageText, {
             parse_mode: "HTML",
           });
         }
       } else {
-        await this.bot.telegram.sendMessage(this.channelId, text, {
-          parse_mode: "HTML",
-        });
+        await this.bot.telegram.sendMessage(
+          this.channelId,
+          text + subscriptionLink,
+          {
+            parse_mode: "HTML",
+          }
+        );
       }
 
       console.log("✅ Пост успешно опубликован");

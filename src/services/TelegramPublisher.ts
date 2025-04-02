@@ -38,7 +38,7 @@ export class TelegramPublisher {
       fs.mkdirSync(this.tempDir, { recursive: true });
     }
 
-    this.bot.catch((err) => {
+    this.bot.catch((err: unknown, ctx) => {
       console.error("❌ Ошибка в боте:", err);
     });
 
@@ -73,12 +73,14 @@ export class TelegramPublisher {
 
       if (response.data?.data?.url) {
         console.log("✅ Изображение успешно загружено в ImgBB");
+
         return response.data.data.url;
       }
 
       throw new Error("Не удалось получить URL загруженного изображения");
     } catch (error) {
       console.error("❌ Ошибка при загрузке изображения в ImgBB:", error);
+
       return imageUrl;
     }
   }
@@ -104,23 +106,29 @@ export class TelegramPublisher {
     $("img").remove();
 
     // Форматируем заголовки в <b>
-    $("h1, h2, h3, h4, h5, h6").each((_, el) => {
+    let isFirstHeading = true;
+    $("h1, h2, h3, h4, h5, h6").each((_: number, el: any) => {
       const text = $(el).text().trim();
-      $(el).replaceWith(`<b>${text}</b>\n`);
+      if (isFirstHeading) {
+        $(el).replaceWith(`<b>${text}</b>\n`);
+        isFirstHeading = false;
+      } else {
+        $(el).replaceWith(`<b>${text}</b>`);
+      }
     });
 
     // Остальное форматирование...
-    $("p").each((_, el) => {
+    $("p").each((_: number, el: any) => {
       const text = $(el).text().trim();
       $(el).replaceWith(`${text}\n`);
     });
 
-    $("strong").each((_, el) => {
+    $("strong").each((_: number, el: any) => {
       const text = $(el).text().trim();
       $(el).replaceWith(`<b>${text}</b>`);
     });
 
-    $("i, em").each((_, el) => {
+    $("i, em").each((_: number, el: any) => {
       const text = $(el).text().trim();
       $(el).replaceWith(`<i>${text}</i>`);
     });
@@ -170,6 +178,7 @@ export class TelegramPublisher {
       console.log("✅ Пост успешно опубликован");
     } catch (error) {
       console.error("❌ Ошибка при публикации поста:", error);
+
       throw error;
     }
   }
@@ -187,11 +196,12 @@ export class TelegramPublisher {
         if (error instanceof Error) {
           throw new Error(`Проверьте права бота и ID канала: ${error.message}`);
         }
+
         throw new Error("Проверьте права бота и ID канала");
       }
 
       // Создаем функцию для проверки и обработки статей
-      const checkAndProcessArticles = async () => {
+      const checkAndProcessArticles = async (): Promise<void> => {
         try {
           console.log("\n🔄 Начало проверки");
 
@@ -208,6 +218,7 @@ export class TelegramPublisher {
               status: "published",
             });
             console.log(`✅ Опубликована статья: ${pendingArticle._id}`);
+
             return;
           }
 
@@ -291,6 +302,7 @@ export class TelegramPublisher {
       );
     } catch (error) {
       console.error("❌ Критическая ошибка при запуске бота:", error);
+
       throw error;
     }
   }
@@ -302,6 +314,7 @@ export class TelegramPublisher {
       console.log("✅ Бот остановлен");
     } catch (error) {
       console.error("❌ Ошибка при остановке бота:", error);
+
       throw error;
     }
   }
@@ -316,6 +329,7 @@ export class TelegramPublisher {
 
       if (!article) {
         console.log("❌ Нет неопубликованных статей в базе данных");
+
         return;
       }
 
@@ -332,6 +346,7 @@ export class TelegramPublisher {
       console.log("✅ Статья успешно опубликована");
     } catch (error) {
       console.error("❌ Ошибка при публикации статьи:", error);
+
       throw error;
     }
   }
@@ -344,6 +359,7 @@ export class TelegramPublisher {
 
       if (pendingArticles.length === 0) {
         console.log("Нет статей для публикации");
+
         return;
       }
 
@@ -358,6 +374,7 @@ export class TelegramPublisher {
       }
     } catch (error) {
       console.error("❌ Ошибка при публикации статей:", error);
+
       throw error;
     }
   }

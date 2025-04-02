@@ -89,7 +89,7 @@ export class TelegramPublisher {
     text: string;
     originalImageSrc?: string;
   }> {
-    const $ = cheerio.load(content);
+    let $ = cheerio.load(content);
     let originalImageSrc: string | undefined;
 
     // Удаляем ненужные теги
@@ -105,15 +105,19 @@ export class TelegramPublisher {
     // Удаляем все изображения из текста
     $("img").remove();
 
+    // Удаляем все переносы строк из HTML контента
+    const cleanHtml = $.html().replace(/\n/g, "");
+    $ = cheerio.load(cleanHtml);
+
     // Форматируем заголовки в <b>
     let isFirstHeading = true;
     $("h1, h2, h3, h4, h5, h6").each((_: number, el: any) => {
       const text = $(el).text().trim();
       if (isFirstHeading) {
-        $(el).replaceWith(`<b>${text}</b>\n`);
+        $(el).replaceWith(`<b>${text}</b>\n\n`);
         isFirstHeading = false;
       } else {
-        $(el).replaceWith(`<b>${text}</b>`);
+        $(el).replaceWith(`<b>${text}</b>\n`);
       }
     });
 
@@ -139,7 +143,7 @@ export class TelegramPublisher {
       /<(?!\/?(b|strong|i|em|a|code|pre|s|strike|u|ins|del|tg-spoiler)\b)[^>]+>/gi,
       ""
     );
-    text = text.replace(/\n{3,}/g, "\n\n");
+    // text = text.replace(/\n{3,}/g, "\n\n");
 
     return { text, originalImageSrc };
   }

@@ -117,7 +117,7 @@ export class TelegramPublisher {
         $(el).replaceWith(`<b>${text}</b>\n\n`);
         isFirstHeading = false;
       } else {
-        $(el).replaceWith(`<b>${text}</b>\n`);
+        $(el).replaceWith(`\n<b>${text}</b>\n`);
       }
     });
 

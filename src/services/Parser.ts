@@ -8,7 +8,7 @@ export class Parser {
     const $ = cheerio.load(response.data);
     const links: string[] = [];
 
-    $(".news-feed .list-feed.slate a").each((_, el) => {
+    $(".list-post-cards .list-card a").each((_, el) => {
       if ($(el).find(".alpha").length === 0) {
         const href = $(el).attr("href");
         if (href) links.push(href);

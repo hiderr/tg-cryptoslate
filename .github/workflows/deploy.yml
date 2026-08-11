@@ -12,15 +12,10 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v3
 
-      - name: Configure Docker for insecure registry
-        run: |
-          echo '{"insecure-registries": ["89.250.67.180:5000"]}' | sudo tee /etc/docker/daemon.json
-          sudo systemctl restart docker
-
       - name: Log in to Docker registry
         uses: docker/login-action@v2
         with:
-          registry: 89.250.67.180:5000
+          registry: registry.timponomarev.ru
           username: ${{ secrets.DOCKER_REGISTRY_USERNAME }}
           password: ${{ secrets.DOCKER_REGISTRY_PASSWORD }}
 
@@ -31,7 +26,7 @@ jobs:
           file: Dockerfile
           platforms: linux/amd64
           push: true
-          tags: 89.250.67.180:5000/cryptoslate-parser:latest
+          tags: registry.timponomarev.ru/cryptoslate-parser:latest
 
       - name: Deploy to remote server via SSH
         uses: appleboy/ssh-action@v0.1.8
